@@ -28,8 +28,8 @@ deepagents is a standalone library built on top of LangChain's core building blo
 │  │  Tools: execute, write_file, read_file,       │  │
 │  │         edit_file, glob, grep, ls             │  │
 │  └──────────┬────────────────────┬───────────────┘  │
-│             │                    │                   │
-│  ┌──────────▼──────────┐  ┌─────▼────────────────┐  │
+│             │                    │                  │
+│  ┌──────────▼──────────┐  ┌──────▼───────────────┐  │
 │  │  OpenShellBackend   │  │  FilesystemBackend   │  │
 │  │                     │  │                      │  │
 │  │  Code execution     │  │  /memory/AGENTS.md   │  │
