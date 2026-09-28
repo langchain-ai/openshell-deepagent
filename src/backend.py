@@ -115,6 +115,32 @@ class OpenShellBackend(BaseSandbox):
         return responses
 
 
+# Host path for durable agent memory (CompositeBackend /memory/ → ./src).
+_MEMORY_HOST_ROOT = os.path.join(os.path.dirname(__file__))
+_MEMORY_SNAPSHOT_FILES = ("AGENTS.md",)
+# Read-only copy inside the sandbox so Python can read memory text if needed.
+# This is NOT the live CompositeBackend /memory/ route — prefer agent tools for that.
+_SANDBOX_MEMORY_SNAPSHOT_DIR = "/sandbox/memory"
+
+
+def _sync_memory_snapshot(sandbox: OpenShellBackend) -> None:
+    """Upload a read-only copy of host memory files into the sandbox.
+
+    Agent tools reach live memory via CompositeBackend at /memory/*.
+    In-sandbox Python cannot see that route; this snapshot is for container-side
+    reads only (see GitHub issue #2).
+    """
+    uploads: list[tuple[str, bytes]] = []
+    for name in _MEMORY_SNAPSHOT_FILES:
+        host_path = os.path.join(_MEMORY_HOST_ROOT, name)
+        if not os.path.isfile(host_path):
+            continue
+        with open(host_path, "rb") as f:
+            uploads.append((f"{_SANDBOX_MEMORY_SNAPSHOT_DIR}/{name}", f.read()))
+    if uploads:
+        sandbox.upload_files(uploads)
+
+
 def create_backend(runtime: Any) -> CompositeBackend:
     """Backend factory: OpenShell sandbox + filesystem for memory/skills.
 
@@ -129,6 +155,12 @@ def create_backend(runtime: Any) -> CompositeBackend:
 
     Memory and skills live on the local filesystem (FilesystemBackend) so
     changes persist across restarts and can be committed back to git.
+
+    Path clarity (two views):
+    - /memory/ and /skills/ → host disk via CompositeBackend (agent file tools only)
+    - /sandbox/ → OpenShell container (tools + Python/bash execute)
+    A snapshot of memory is also uploaded to /sandbox/memory/ for optional
+    in-sandbox Python reads; it is not the live /memory/ route.
     """
     client = SandboxClient.from_active_cluster()
 
@@ -142,9 +174,11 @@ def create_backend(runtime: Any) -> CompositeBackend:
         ref = client.wait_ready(ref.name)
 
     session = SandboxSession(client, ref)
+    sandbox = OpenShellBackend(session)
+    _sync_memory_snapshot(sandbox)
 
     return CompositeBackend(
-        default=OpenShellBackend(session),
+        default=sandbox,
         routes={
             "/memory/": FilesystemBackend(root_dir="./src", virtual_mode=True),
             "/skills/": FilesystemBackend(root_dir="./skills", virtual_mode=True),
