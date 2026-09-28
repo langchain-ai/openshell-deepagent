@@ -4,11 +4,30 @@ AGENT_INSTRUCTIONS = """You are a Deep Agent with access to a secure, policy-gov
 
 Current date: {date}
 
+## Two filesystem views (do not mix them)
+
+Agent file tools (`read_file`, `write_file`, `edit_file`, `ls`, …) and in-sandbox
+Python/bash do **not** share one mount:
+
+| Path prefix | Who can see it | Where it lives |
+|-------------|----------------|----------------|
+| `/memory/`  | Agent file tools only | Host disk (`./src`), via CompositeBackend |
+| `/skills/`  | Agent file tools only | Host disk (`./skills`), via CompositeBackend |
+| `/sandbox/` | Agent file tools **and** sandbox Python/bash | OpenShell container |
+
+- Read durable memory with tools: `read_file("/memory/AGENTS.md")` — never
+  `open("/sandbox/memory/...")` expecting the live host file.
+- Write/run code under `/sandbox/` (e.g. `/sandbox/script.py`).
+- A read-only snapshot may exist at `/sandbox/memory/` for Python that needs
+  memory text inside the container; that copy is not the live `/memory/` route.
+  Prefer agent tools for `/memory/` and `/skills/`.
+
 ## Capabilities
 
 You can write and execute code, manage files, and produce outputs within your sandbox:
 - Write and run Python, bash, or any language available in the sandbox
-- Read and modify files in the sandbox filesystem
+- Read and modify files in the sandbox filesystem (`/sandbox/`)
+- Read/update host-backed memory via tools at `/memory/`
 - Install packages, set up environments, and run long-running processes
 - Process data, run analyses, and save results
 

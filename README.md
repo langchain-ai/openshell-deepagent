@@ -60,6 +60,18 @@ deepagents is a standalone library built on top of LangChain's core building blo
 
 The agent uses `write_file` to create scripts in `/sandbox/`, then the `execute` tool runs them inside the OpenShell sandbox via `SandboxSession.exec()`. File reads/writes/edits all go through `BaseSandbox`, which translates them into shell commands automatically. This is a drop-in replacement for Modal — swap `ModalBackend` → `OpenShellBackend` and everything else (memory, skills, subagents) stays the same.
 
+### Path clarity: host tools vs sandbox Python
+
+`CompositeBackend` does **not** mount host memory into the container. Agent file tools and in-sandbox Python see different trees:
+
+| Path | Agent file tools | In-sandbox Python / bash |
+|------|------------------|--------------------------|
+| `/memory/*` | Host `./src` (durable, git-friendly) | **Not visible** as a live mount |
+| `/skills/*` | Host `./skills` | **Not visible** as a live mount |
+| `/sandbox/*` | OpenShell container | OpenShell container |
+
+Use `read_file("/memory/AGENTS.md")` for durable memory. Do **not** expect live host memory at `/sandbox/memory/...` — that path is only a **read-only startup snapshot** uploaded for optional in-sandbox Python reads ([issue #2](https://github.com/langchain-ai/openshell-deepagent/issues/2)). Edits to memory should go through tools on `/memory/`, not Python writes under `/sandbox/memory/`.
+
 ---
 
 ## Prerequisites
@@ -236,6 +248,7 @@ uv run openshell gateway stop
 | `no active gateway configured` | `uv run openshell gateway start` (Docker must be running) |
 | Gateway won't start | Make sure Docker Desktop is running: `docker info` |
 | Agent can't write to `/workspace` | Use `/sandbox` instead (writable working directory) |
+| Python can't open `/memory/...` or live host AGENTS.md | Expected — `/memory/` is host-routed for agent tools only. Use `read_file("/memory/AGENTS.md")`, or the startup snapshot at `/sandbox/memory/AGENTS.md` for in-sandbox reads |
 | Orphaned sandboxes piling up | Set `OPENSHELL_SANDBOX_NAME` in `.env` to reuse one sandbox |
 
 ---
