@@ -33,7 +33,7 @@ deepagents is a standalone library built on top of LangChain's core building blo
 │  │  OpenShellBackend   │  │  FilesystemBackend   │  │
 │  │                     │  │                      │  │
 │  │  Code execution     │  │  /memory/AGENTS.md   │  │
-│  │  runs in isolated   │  │  /skills/*.md        │  │
+│  │  runs in isolated   │  │  /skills/<name>/     │  │
 │  │  sandbox container  │  │                      │  │
 │  │  via gRPC           │  │  (local disk —       │  │
 │  │                     │  │   persists across    │  │
@@ -59,6 +59,19 @@ deepagents is a standalone library built on top of LangChain's core building blo
 ```
 
 The agent uses `write_file` to create scripts in `/sandbox/`, then the `execute` tool runs them inside the OpenShell sandbox via `SandboxSession.exec()`. File reads/writes/edits all go through `BaseSandbox`, which translates them into shell commands automatically. This is a drop-in replacement for Modal — swap `ModalBackend` → `OpenShellBackend` and everything else (memory, skills, subagents) stays the same.
+
+## Skills
+
+Starter skills live in [`skills/`](skills/) on the host and are routed through CompositeBackend as `/skills/`. The agent loads them via `skills=["/skills/"]` in [`src/agent.py`](src/agent.py) (progressive disclosure: frontmatter at startup, full `SKILL.md` when relevant).
+
+| Skill | Use when |
+| --- | --- |
+| [`sandbox-stats`](skills/sandbox-stats/SKILL.md) | Numeric summaries / stats scripts in `/sandbox` |
+| [`policy-safe-fetch`](skills/policy-safe-fetch/SKILL.md) | HTTP/fetch/install that must respect network policy |
+
+**Companion scripts:** a skill may ship a small code file next to `SKILL.md` (see [`skills/sandbox-stats/stats_companion.py`](skills/sandbox-stats/stats_companion.py)). The agent should `read_file` it from `/skills/…`, then `write_file` under `/sandbox/` and `execute` there — host `/skills/` is not a live sandbox mount. This is a copy-then-run pattern, not a plugin/packaging system.
+
+Add a new skill by creating `skills/<name>/SKILL.md` with `name` and `description` frontmatter (see [Deep Agents skills](https://docs.langchain.com/oss/python/deepagents/skills)).
 
 ---
 
@@ -178,6 +191,15 @@ Write and run a Python script that generates 500 random numbers, computes basic 
 (mean, median, std dev, min, max), and prints a summary.
 ```
 
+**Skill use (sandbox-stats companion):**
+
+```
+Use the sandbox-stats skill companion: read /skills/sandbox-stats/stats_companion.py
+(or SKILL.md), copy the pattern into /sandbox/stats.py for 100 random numbers
+(mean, median, stdev, min, max), execute it there, and report the summary.
+Do not run Python from /skills/.
+```
+
 **Policy enforcement (the cool part):**
 
 ```
@@ -190,13 +212,24 @@ The sandbox network policy blocks this — the agent literally cannot do it, reg
 
 ## Model Configuration
 
-The agent uses **NVIDIA Nemotron Super 3** via NVIDIA NIM. Set your key in `.env`:
+**Default:** NVIDIA Nemotron Super 3 via NVIDIA NIM (`ChatNVIDIA`). Set your key in `.env`:
 
 ```
 NVIDIA_API_KEY=nvapi-...
+# Optional — defaults to nvidia/nemotron-3-super-120b-a12b when unset
+# AGENT_MODEL=nvidia/nemotron-3-super-120b-a12b
 ```
 
 Get a key at [integrate.api.nvidia.com](https://integrate.api.nvidia.com).
+
+**Alternate provider** (env-only flip — no code edits): set `AGENT_MODEL` to a LangChain `provider:model` string and the matching API key. Example Anthropic:
+
+```
+AGENT_MODEL=anthropic:claude-sonnet-4-6
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+That path uses `init_chat_model`. Restart `langgraph dev` after changing `.env`.
 
 ## Policy Iteration
 
